@@ -1,24 +1,31 @@
-# analyze.py
-# Make KM-Waechter smarter. The 80% rule only warns you once a car is nearly worn. Here you find
-# which cars are most likely to break down SOON, from their history, and rank them by risk, so the
-# fleet team fixes the risky ones first.
-#
-# fleet_history.csv has one row per car (120 of them) and a "broke_down" column (1 = it later
-# broke down).
-#
-# TODO(you), with IBM Bob and pandas:
-#   1. Load fleet_history.csv.
-#   2. Find which columns actually separate the cars that broke down from those that did not.
-#      Do not assume. Compare the two groups column by column and let the numbers answer.
-#      (Total mileage and age look like the obvious answers. Check whether they really are.)
-#   3. Build a simple risk score from 0 to 100 for each car, from the columns that DO separate.
-#      No heavy machine learning needed.
-#   4. Print the cars ranked by risk, highest first.
-#   5. Write a two-line summary at the top of this file: which factors matter most, and why.
+# Summary: Breakdown risk is driven by operational intensity (km_since_service, avg_daily_km, load_factor).
+# Total odometer mileage and vehicle age have virtually zero correlation with breakdowns.
 
 import pandas as pd
 
+# 1. Load dataset
 df = pd.read_csv("fleet_history.csv")
-print(df.head())
 
-# your analysis here
+# 2. Compare broken down vs healthy vehicles
+broken = df[df["broke_down"] == 1]
+healthy = df[df["broke_down"] == 0]
+
+print("=== Mean Comparison (Broken vs Healthy) ===")
+numeric_cols = df.select_dtypes(include=["number"]).columns
+for col in numeric_cols:
+    if col != "broke_down":
+        r = df[col].corr(df["broke_down"])
+        print(f"{col:20s} | Broken: {broken[col].mean():.2f} | Healthy: {healthy[col].mean():.2f} | corr: {r:+.3f}")
+
+# 3. Build a simple risk score (0 to 100) based on separating factors
+k_norm = (df["km_since_service"] - df["km_since_service"].min()) / (df["km_since_service"].max() - df["km_since_service"].min())
+d_norm = (df["avg_daily_km"] - df["avg_daily_km"].min()) / (df["avg_daily_km"].max() - df["avg_daily_km"].min())
+l_norm = (df["load_factor"] - df["load_factor"].min()) / (df["load_factor"].max() - df["load_factor"].min())
+
+df["risk_score"] = (0.50 * k_norm + 0.30 * d_norm + 0.20 * l_norm) * 100
+
+# 4. Print the cars ranked by risk, highest first
+ranked_cars = df.sort_values(by="risk_score", ascending=False)
+
+print("\n=== Top 20 Riskiest Vehicles ===")
+print(ranked_cars[["vehicle_id", "risk_score", "km_since_service", "avg_daily_km", "load_factor", "broke_down"]].head(20).to_string(index=False))
